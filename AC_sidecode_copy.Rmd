@@ -92,8 +92,9 @@ files <- list.files("../data/side", pattern = "tagData_T[0-9]+\\.csv$", full.nam
 
 # Read and combine them
 tagDataAll <- map_df(files, read_plus)
-
-# Inspect
+tagDataAll
+```
+```# Inspect
 print(tagDataAll)
 View(tagDataAll)
 
@@ -110,7 +111,65 @@ write_csv(tagDataAll, "~/Desktop/tagDataside.csv")
 ```
 
 ```{r}
-#trying to make a wide table to be able to look at the area progression for each individual across time, to make sure the segmentations i made make sense 
+library(dplyr)
+library(tidyr)
+library(stringr)
+
+# Step 0: ensure TagLab.Area is numeric
+tagDataAll <- tagDataAll %>%
+  mutate(TagLab.Area = as.numeric(str_trim(TagLab.Area)))
+
+# Step 1: extract frag_size from filename column inside CSV
+tagDataAll <- tagDataAll %>%
+  mutate(
+    frag_size = str_extract(filename, "(?<=_)[0-9\\.]+")
+  )
+
+# Step 2: summarize to ensure one value per genet + ID + timepoint
+tagDataSumm <- tagDataAll %>%
+  group_by(genet, ID = TagLab.Class.name, timepoint, frag_size) %>%
+  summarise(area = mean(TagLab.Area, na.rm = TRUE), .groups = "drop")
+
+# Step 3: pivot wider
+tagDatawide <- tagDataSumm %>%
+  pivot_wider(
+    names_from = timepoint,
+    values_from = area
+  ) %>%
+  arrange(genet, ID) %>%
+  # Step 4: add treatment column based on ID
+  mutate(
+    treatment = case_when(
+      ID >= 1  & ID <= 10 ~ "control",
+      ID >= 11 & ID <= 20 ~ "30min",
+      ID >= 21 & ID <= 30 ~ "1hr",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  # Step 5: reorder columns: treatment first
+  select(treatment, genet, ID, frag_size, everything())
+
+# Step 6: view final table
+View(tagDatawide)
+
+```
+
+```{r}
+# Step 6: view
+View(tagDatawide)
+
+```
+
+```{r}
+library(readr)
+
+# Save as CSV on desktop
+write_csv(tagDatawide, "~/Desktop/tagDatawide.csv")
+
+
+```
+
+#old code
 
 library(dplyr)
 library(tidyr)
@@ -142,19 +201,4 @@ tagDatawide <- tagDataSumm %>%
   ) %>%
   # Step 5: reorder columns: treatment first
   select(treatment, genet, ID, everything())
-```
-
-```{r}
-# Step 6: view
-View(tagDatawide)
-
-```
-
-```{r}
-library(readr)
-
-# Save as CSV on desktop
-write_csv(tagDatawide, "~/Desktop/tagDatawide.csv")
-
-
 ```
