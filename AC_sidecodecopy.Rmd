@@ -9,196 +9,182 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
-
-```{r, include = TRUE}
-```
 --> command option i will automatically put an r chunk in your code 
 --> command shift m will make a pipe 
 
+###
+***
+This is the analysis pipeline for data generated from TagLab annotations of our peroxide and tunicate trials. 
+
+
+***
+### All analyses performe with R verion `r getRversion()`
+# Basic setup of R environment
 ***
 ## Loading required packages
 
-For the following analyses we will require the use of a number of different R packages. Most of which can be sourced from CRAN, but some must be downloaded from GitHub. We can use the following code to load in the packages and install any packages not previously installed in the R console. 
+For the following analyses we will require the use of a number of different R packages. Most of which can be sourced from CRAN, but some must be downloaded from GitHub. We can use the following code to load in the packages and install any packages not previously installed in the R console.  
 
 ```{r, load packages, include = TRUE, message = FALSE, warning = FALSE, results = 'hide'}
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load("ggplot2","officer","ggpubr", "rcompanion", "RColorBrewer", "patchwork", "magrittr","reshape2", "stringr", "plyr", "dplyr", "flextable", "tidyr", "tibble", "vegan", "paletteer", "purrr")
 ```
 
-```{r}
-setwd("/Users/annabelleconti/Documents/GitHub/aminoTrial/data")
-getwd()
+<br><br> 
 
+# Loading and Manipulating data
+***
+
+We have loaded a lot of individual data into R and we want to combine the data and create one cohesive dataframe with which to work. In order to do that we have to add a few identifiers to our data frames to when combining we can differentiate between the two, but this is also a good time to add other columns like **treatment** and **time** as well. The majority of this is done using various functions from the package `dplyr`. 
+```{r}
 read_plus <- function(flnm) {
   read.csv(flnm) %>%
     mutate_all(as.character) %>%
     mutate(filename = flnm)
 }
-```
-
-```{r}
 #code i used to combine each picture into a csv 
 # T2
-tagData2 <- list.files(path = "../data/side/tagData_T2", pattern = "*.csv", full.names = TRUE) %>%
-  map_df(~read_plus(.))
-tagData2
+sideT2 <- list.files(path = "./T2", pattern = "*.csv", full.names = TRUE) %>%
+  map_df(~read_plus(.)) %>%
+  mutate(timePoint = "T2")
+sideT2
+
+sideT3 <- list.files(path = "./T3", pattern = "*.csv", full.names = TRUE) %>%
+  map_df(~read_plus(.))%>%
+  mutate(timePoint = "T3")
+sideT3
+
+sideT4 <- list.files(path = "./T4", pattern = "*.csv", full.names = TRUE) %>%
+  map_df(~read_plus(.)) %>% 
+  mutate(timePoint = "T4")
+sideT4
+
+sideT5 <- list.files(path = "./T5", pattern = "*.csv", full.names = TRUE) %>%
+  map_df(~read_plus(.)) %>% 
+  mutate(timePoint = 'T5')
+sideT5
+
+sideT6 <- list.files(path = "./T6", pattern = "*.csv", full.names = TRUE) %>%
+  map_df(~read_plus(.)) %>% 
+  mutate(timePoint = "T6")
+sideT6
+
+tagData1 <- rbind(sideT2, sideT3, sideT4, sideT5, sideT6)
+
+
+tagData <- tagData1 %>%
+  mutate(clean_name = str_remove(basename(filename), ".csv")) %>%
+  separate(
+    clean_name,
+    into = c("Genet", "fragSize", "treatment", "individual", "timePoint"),
+    sep = "_") %>% 
+  select(c(TagLab.Date, timePoint, treatment, Genet, fragSize, TagLab.Class.name, TagLab.Area)) %>% 
+  mutate(treatment = str_replace(treatment, "30mins", "30min")) %>% 
+  rename(Date = TagLab.Date, 
+         Individual = TagLab.Class.name, 
+         Area = TagLab.Area) %>% 
+  mutate(across(c(treatment, Genet, fragSize, timePoint, Individual), as.factor)) %>% 
+  mutate(Area = as.numeric(Area))
+
+         
+
+
 ```
+
 
 ```{r}
-#this has combined all the csvs for each timepoint, and made columns like genet and time point, which grabs information from the filename 
-
-library(dplyr)
-library(readr)
-library(purrr)
-library(stringr)
-
-# Function to read a CSV and extract genet, frag_size, and timepoint from the filename column
-read_plus <- function(file) {
-  read_csv(file) %>%
-    mutate(
-      # keep the CSV filename for reference
-      csv_file = basename(file),
-      # extract genet from the filename column inside the CSV
-      genet = str_extract(filename, "(?<=/)[0-9]+(?=_)"),
-      # extract fragment size (number after first underscore)
-      frag_size = str_extract(filename, "(?<=_)[0-9\\.]+"),
-      # extract timepoint (T2, T3, etc.) from the filename
-      timepoint = str_extract(filename, "T[0-9]+")
-    )
-}
-
-# List all tagData_T*.csv files
-files <- list.files("../data/side", pattern = "tagData_T[0-9]+\\.csv$", full.names = TRUE)
-
-# Read and combine them
-tagDataAll <- map_df(files, read_plus)
-tagDataAll
-```
-```# Inspect
-print(tagDataAll)
-View(tagDataAll)
-
-```
-
-
-```{r}
-library(readr)
-
-# Save as CSV on desktop
-write_csv(tagDataAll, "~/Desktop/tagDataside.csv")
-
-
-```
-
-```{r}
-library(dplyr)
-library(tidyr)
-library(stringr)
-
-# Step 0: ensure TagLab.Area is numeric
-tagDataAll <- tagDataAll %>%
-  mutate(TagLab.Area = as.numeric(str_trim(TagLab.Area)))
-
-# Step 1: extract frag_size from filename column inside CSV
-tagDataAll <- tagDataAll %>%
-  mutate(
-    frag_size = str_extract(filename, "(?<=_)[0-9\\.]+")
-  )
 
 # Step 2: summarize to ensure one value per genet + ID + timepoint
-tagDataSumm <- tagDataAll %>%
-  group_by(genet, ID = TagLab.Class.name, timepoint, frag_size) %>%
-  summarise(area = mean(TagLab.Area, na.rm = TRUE), .groups = "drop")
+tagDataSum <- tagData %>%
+  group_by(Genet, Individual, timePoint, fragSize, treatment) %>%
+  dplyr::summarize(meanArea = mean(Area, na.rm = TRUE))
 
-# Step 3: pivot wider
-tagDatawide <- tagDataSumm %>%
-  pivot_wider(
-    names_from = timepoint,
-    values_from = area
-  ) %>%
-  arrange(genet, ID) %>%
-  # Step 4: add treatment column based on ID
-  mutate(
-    treatment = case_when(
-      ID >= 1  & ID <= 10 ~ "control",
-      ID >= 11 & ID <= 20 ~ "30min",
-      ID >= 21 & ID <= 30 ~ "1hr",
-      TRUE ~ NA_character_
-    )
-  ) %>%
-  # Step 5: reorder columns: treatment first
-  select(treatment, genet, ID, frag_size, everything())
-
-# Step 6: view final table
-View(tagDatawide)
+# # Step 3: pivot wider
+# tagDatawide <- tagDataSumm %>%
+#   pivot_wider(
+#     names_from = timepoint,
+#     values_from = area
+#   ) %>%
+#   arrange(genet, ID) %>%
+#   # Step 4: add treatment column based on ID
+#   mutate(
+#     treatment = case_when(
+#       ID >= 1  & ID <= 10 ~ "control",
+#       ID >= 11 & ID <= 20 ~ "30min",
+#       ID >= 21 & ID <= 30 ~ "1hr",
+#       TRUE ~ NA_character_
+#     )
+#   ) %>%
+#   # Step 5: reorder columns: treatment first
+#   select(treatment, genet, ID, frag_size, everything())
+# 
+# # Step 6: view final table
+# View(tagDatawide)
 
 ```
+
+
+visualizing the data
 
 ```{r}
-# Step 6: view
-View(tagDatawide)
+
+myColors <- paletteer_c("pals::ocean.balance", 18, direction = 1)
+stackTheme <- theme(
+    # Title
+    plot.title = element_text(size = 40, face = "bold"), 
+    # X Axis
+    axis.text.x = element_text(size = 40, colour = "black", vjust = 0.5, hjust = 0.5, face= "bold"), 
+    axis.title.x = element_blank(),
+    # Y Axis
+    axis.title.y = element_text(size = 40, face = "bold"), 
+    axis.text.y = element_text(colour = "black", size = 40, face = "bold"),
+    # Axis Lines and Ticks
+    axis.line = element_line(colour = "black"), 
+    axis.ticks = element_line(color="black"), 
+    # Legend
+    legend.title = element_text(size = 36, face = "bold"), 
+    legend.text = element_text(size = 20, face = "bold", colour = "black"), 
+    legend.position = "right",
+    # Grid and Background
+    panel.grid.major = element_line(size = 0.5, linetype = 'solid', colour = "black"),
+    panel.background = element_rect(fill = '#D3D3D3'), 
+    # Text
+    text = element_text(size=40, color="black"), 
+    #rectangle
+    rect = element_rect(fill = "transparent"),
+    # Facet Labels
+    strip.text = element_text(size = 30))
+
+
+
+
+
+tagStack <- ggplot(tagDataSum, aes(x = timePoint, y = meanArea, fill = timePoint))+
+  geom_boxplot()+
+  geom_point(shape = 20, aes(color = Genet, fill = Genet))+
+  # ylim(0,800)+
+  # labs(y = "Area of Tunicate (cm2)", fill = "Time Point", title = "Tissue Area of Invasive Tunicate")+stackTheme
+  facet_wrap(. ~ treatment, scales = 'free')
+
+
+tagData_mean <- tagData %>%
+  group_by(treatment, timePoint) %>%
+  summarise(meanArea = mean(Area, na.rm = TRUE), .groups = "drop")
+
+
+tagStack <- ggplot(tagData_mean, aes(x = timePoint, y = meanArea, fill = treatment))+
+                      geom_bar(stat = 'identity', position = 'dodge')
++
+                      # ylim(0,800)+
+                      # labs(y = "Area of Tunicate (cm2)", fill = "Time Point", title = "Tissue Area of Invasive Tunicate")+stackTheme
+  # facet_wrap(. ~ Genet, scales = 'free' )
+
+
 
 ```
 
-```{r}
-library(readr)
-
-# Save as CSV on desktop
-write_csv(tagDatawide, "~/Desktop/tagDatawide.csv")
 
 
-```
 
-#old code
 
-library(dplyr)
-library(tidyr)
-
-# Step 1: ensure TagLab.Area is numeric and clean
-tagDataAll <- tagDataAll %>%
-  mutate(TagLab.Area = as.numeric(str_trim(TagLab.Area)))
-
-# Step 2: summarize to ensure one value per (genet, ID, timepoint)
-tagDataSumm <- tagDataAll %>%
-  group_by(genet, ID = TagLab.Class.name, timepoint) %>%
-  summarise(area = mean(TagLab.Area, na.rm = TRUE), .groups = "drop")
-
-# Step 3: pivot wider
-tagDatawide <- tagDataSumm %>%
-  pivot_wider(
-    names_from = timepoint,
-    values_from = area
-  ) %>%
-  arrange(genet, ID) %>%
-  # Step 4: add treatment column based on ID
-  mutate(
-    treatment = case_when(
-      ID >= 1  & ID <= 10 ~ "control",
-      ID >= 11 & ID <= 20 ~ "30min",
-      ID >= 21 & ID <= 30 ~ "1hr",
-      TRUE ~ NA_character_
-    )
-  ) %>%
-  # Step 5: reorder columns: treatment first
-  select(treatment, genet, ID, everything())
-```
