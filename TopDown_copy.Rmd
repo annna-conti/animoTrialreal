@@ -1,0 +1,117 @@
+---
+title: "Top Down Copy"
+author: "Annabelle Conti"
+date: "2025-08-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r, load packages, include = TRUE, message = FALSE, warning = FALSE, results = 'hide'}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load("ggplot2","officer","ggpubr", "rcompanion", "RColorBrewer", "patchwork", "magrittr","reshape2", "stringr", "plyr", "dplyr", "flextable", "tidyr", "tibble", "vegan", "paletteer", "purrr")
+```
+
+```{r}
+setwd("/Users/annabelleconti/Documents/GitHub/aminoTrial/data")
+getwd()
+
+read_plus <- function(flnm) {
+  read.csv(flnm) %>%
+    mutate_all(as.character) %>%
+    mutate(filename = flnm)
+}
+```
+
+```{r}
+#this converts all the csv files in the specific path into data frames 
+tagData1 <-
+  list.files(path = "../data/topDown", pattern = "*.csv",
+             full.names = T) %>%
+  map_df(~read_plus(.)) %>%
+  as.tibble()
+```
+
+```{r}
+tagData1
+```
+
+```{r}
+# this separates your Taglab class name into relevant data
+tagData <- tagData1 %>%
+  mutate(
+    # Extract genet (first number before "_")
+    genet = as.numeric(str_extract(filename, "(?<=/)[0-9]+(?=_)")),
+    
+    # Extract frag size (decimal number between underscores)
+    fragSize = as.numeric(str_extract(filename, "(?<=_)[0-9]+\\.[0-9]+")),
+    
+    # Extract timepoint (number after "_T")
+    timepoint = as.numeric(str_extract(filename, "(?<=_T)[0-9]+")),
+    
+    # Use TagLab.Class.name as ID (convert to numeric)
+    ID = as.numeric(TagLab.Class.name)
+  ) %>%
+  select(date = TagLab.Date, ID, genet, fragSize, timepoint, area = TagLab.Area)
+
+```
+
+```{r}
+#now going to add treatment as a label using ID number 
+
+library(dplyr)
+
+tagData1 <- tagData %>%
+  mutate(
+    treatment = case_when(
+      ID >= 1  & ID <= 10 ~ "control",
+      ID >= 11 & ID <= 20 ~ "30min",
+      ID >= 21 & ID <= 30 ~ "1hr",
+      TRUE ~ NA_character_  # any IDs outside 1-30 become NA
+    )
+  )
+
+#need to convert values in area column from characters to numeric so that I can run the normality tests on them 
+tagData1$area <- as.numeric(tagData1$area)
+
+```
+
+<br><br>
+
+# Checking for Normality
+***
+
+Now that we have the data all in one place with the appropriate columns added, we are going to check to see if our data is normally distributed. 
+
+```{r, normality, include = TRUE}
+
+hist(tagData1$area)
+qqnorm(tagData1$area)
+shapiro.test(tagData1$area)
+
+#i think it looks normal, if it actually is, then can run a parametric analyses on it 
+
+```
+
