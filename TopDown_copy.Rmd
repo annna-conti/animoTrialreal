@@ -1,0 +1,245 @@
+---
+title: "Top Down Copy"
+author: "Annabelle Conti"
+date: "2025-08-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r, load packages, include = TRUE, message = FALSE, warning = FALSE, results = 'hide'}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load("ggplot2","officer","ggpubr", "rcompanion", "RColorBrewer", "patchwork", "magrittr","reshape2", "stringr", "plyr", "dplyr", "flextable", "tidyr", "tibble", "vegan", "paletteer", "purrr")
+```
+
+```{r}
+setwd("/Users/annabelleconti/Documents/GitHub/aminoTrial/data")
+getwd()
+
+read_plus <- function(flnm) {
+  read.csv(flnm) %>%
+    mutate_all(as.character) %>%
+    mutate(filename = flnm)
+}
+```
+
+```{r}
+list.files("../data/topDown", pattern = "*.csv", full.names = TRUE)
+
+```
+
+```{r}
+files <- list.files("../data/topDown", pattern = "*.csv", full.names = TRUE)
+
+# Peek at the structure of each CSV
+map(files, ~ {
+  df <- read_csv(.x, n_max = 5)
+  list(file = .x, str = str(df))
+})
+```
+
+```{r}
+
+topDown <-
+    list.files(path = "../data/topDown", pattern = "*.csv",
+               full.names = T) %>%
+    map_df(~read_plus(.)) %>%
+  as.tibble()
+
+topDown
+
+```
+
+
+```{r}
+# this separates the Taglab class name into relevant data
+topDown1 <- topDown %>%
+  mutate(
+    # Extract genet (first number before "_")
+    genet = as.numeric(str_extract(filename, "(?<=/)[0-9]+(?=_)")),
+    
+    # Extract frag size (decimal number between underscores)
+    fragSize = as.numeric(str_extract(filename, "(?<=_)[0-9]+\\.[0-9]+")),
+    
+    # Extract timepoint (number after "_T")
+    timepoint = as.numeric(str_extract(filename, "(?<=_T)[0-9]+")),
+    
+    # Use TagLab.Class.name as ID (convert to numeric)
+    ID = as.numeric(TagLab.Class.name)
+  ) %>%
+  select(date = TagLab.Date, ID, genet, fragSize, timepoint, area = TagLab.Area)
+
+topDown1
+
+```
+
+```{r}
+#now going to add treatment as a label using ID number 
+library(dplyr)
+
+topDown1 <- topDown1 %>%
+  mutate(
+    treatment = case_when(
+      ID >= 1 & ID <= 10  ~ "control",
+      ID >= 11 & ID <= 20 ~ "30min",
+      ID >= 21 & ID <= 30 ~ "1hr",
+      TRUE ~ NA_character_  # for any IDs outside these ranges
+    )
+  )
+
+topDown1
+
+```
+```{r}
+library(readr)
+
+# Save as CSV on desktop
+write_csv(topDown1, "~/Desktop/topDown1.csv")
+```
+
+```{r}
+#calculating percent change in each treatment 
+library(dplyr)
+setwd("/Users/annabelleconti/Documents/GitHub/aminoTrial/data/topDown")
+
+topDownarea <- read.csv("mean_area.csv")
+
+topDownarea <- dplyr::rename(topDownarea, mean_area = mean.area)
+
+
+```
+
+```{r}
+library(dplyr)
+
+# Make sure timepoint is numeric
+topDownarea <- topDownarea %>%
+  mutate(timepoint = as.numeric(timepoint))
+
+# Extract initial and final values
+start <- topDownarea %>%
+  filter(timepoint == 1) %>%
+  select(genet, size, treatment, start_area = mean_area)
+
+end <- topDownarea %>%
+  filter(timepoint == 7) %>%
+  select(genet, size, treatment, end_area = mean_area)
+
+# Join and calculate percent change
+summary_pct <- start %>%
+  inner_join(end, by = c("genet", "size", "treatment")) %>%
+  mutate(percent_change = (end_area - start_area) / start_area * 100) %>%
+  select(genet, size, treatment, percent_change)
+
+
+summary_pct
+
+```
+
+
+<br><br>
+
+# Checking for Normality
+***
+
+Now that we have the data all in one place with the appropriate columns added, we are going to check to see if our data is normally distributed. 
+
+```{r, normality, include = TRUE}
+
+hist(topDown1$area)
+qqnorm(topDown1$area)
+shapiro.test(topDown1$area)
+
+#i think it looks normal, if it actually is, then can run a parametric analyses on it 
+
+```
+```{r}
+# Load libraries
+library(dplyr)
+library(tidyr)
+
+setwd("/Users/annabelleconti/Documents/GitHub/aminoTrial/data/topDown")
+
+avg_change <- read.csv("avg_change.csv")
+
+# 1. Reshape the data so each size is a separate column
+wide_data <- avg_change %>%
+  select(genet, size, percent_change) %>%
+  pivot_wider(
+    names_from = size,
+    values_from = percent_change
+  )
+
+# 2. Check the reshaped data
+print(wide_data)
+```
+
+```{r}
+# 3. Run paired t-test (size 1.2 vs size 2)
+t_test_result <- t.test(wide_data$`1.2`, wide_data$`2`, paired = TRUE)
+
+# 4. View the result
+print(t_test_result)
+
+```
+```{r}
+    library(RColorBrewer)
+    display.brewer.pal(n = 8, name = 'RdBu') # Displays the 'RdBu' palette
+    barplot(c(2,5,7), col = brewer.pal(n = 3, name = "Set2")) # Uses a 'Set1' palette for bars
+```
+
+
+
+```{r}
+#plotting the changes in mean area over time per genet 
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 1. Create your data
+wide_data2 <- data.frame(
+  genet = c(33, 34, 38),
+  X1.2 = c(107.14, 89.32, 112.5),  # percent change for size 1.2
+  X2   = c(54.2, 78.9, 85.6)       # percent change for size 2
+)
+
+# 2. Convert to long format
+long_data <- wide_data2 %>%
+  pivot_longer(
+    cols = c(X1.2, X2),
+    names_to = "size",
+    values_to = "percent_change"
+  ) %>%
+  mutate(size = recode_factor(size, X1.2 = "1.2", X2 = "2"))  # rename and make factor
+
+# 3. Plot grouped bar chart
+ggplot(long_data, aes(x = factor(genet), y = percent_change, fill = size)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) + # side-by-side bars
+  scale_fill_manual(values = c("1.2" = "#55D9BC", "2" = "#F781BC")) +
+  labs(x = "Genet", y = "Percent Change", fill = "Size") +
+  theme_minimal(base_size = 14)
+
+```
