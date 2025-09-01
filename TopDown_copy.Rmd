@@ -168,6 +168,8 @@ Now that we have the data all in one place with the appropriate columns added, w
 
 ```{r, normality, include = TRUE}
 
+
+
 hist(topDown1$area)
 qqnorm(topDown1$area)
 shapiro.test(topDown1$area)
@@ -175,7 +177,66 @@ shapiro.test(topDown1$area)
 #i think it looks normal, if it actually is, then can run a parametric analyses on it 
 
 ```
+
 ```{r}
+#running repeated-measures ANOVA to see if there's a significant difference in percent change in mean area between treatment times 
+
+library(dplyr)
+library(rstatix)
+
+anova_results <- list()
+
+for(s in unique(summary_pct$size)) {
+  
+  data_size <- summary_pct %>% filter(size == s)
+  
+  # Run repeated-measures ANOVA
+  res <- data_size %>%
+    anova_test(dv = percent_change, wid = genet, within = treatment)
+  
+  # Extract only the main ANOVA table
+  main_anova <- res$ANOVA %>% 
+    as_tibble() %>% 
+    mutate(size = s)
+  
+  anova_results[[as.character(s)]] <- main_anova
+}
+
+# Combine main ANOVA results into one table
+final_results <- bind_rows(anova_results)
+final_results
+
+```
+
+```{r}
+#now going to run a post-hoc on it to see which treatments are significant
+library(dplyr)
+library(rstatix)
+
+# Filter data for size 2.0
+data_2 <- summary_pct %>% filter(size == 2.0)
+
+# Convert treatment to factor (if not already)
+data_2$treatment <- factor(data_2$treatment, levels = c("control", "30min", "1hr"))
+
+# Post-hoc pairwise comparisons (paired)
+posthoc <- data_2 %>%
+  pairwise_t_test(
+    percent_change ~ treatment,
+    paired = TRUE,
+    p.adjust.method = "holm"
+  )
+
+posthoc
+
+```
+
+
+
+
+```{r}
+#prepping data for t-test (to see if there is a difference between the frag sizes)
+
 # Load libraries
 library(dplyr)
 library(tidyr)
